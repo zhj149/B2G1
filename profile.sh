@@ -6,6 +6,7 @@ ADB=adb
 PROFILE_DIR=/data/local/tmp
 PROFILE_PATTERN=${PROFILE_DIR}/'profile_?_*.txt';
 PREFIX=""
+BP_SYMBOLS=""
 
 if [ -n "$SPS_PROFILE_DEVICE" ]; then
   ADB="adb -s ${SPS_PROFILE_DEVICE}"
@@ -141,9 +142,9 @@ start_with_args() {
   ${ADB} shell rm $fileName &> /dev/null
   features=""
   threads=""
+  tasktracer=""
 
-  while getopts ":i:m:t:f:p:e:s:" opt "$@";
-  do
+  while getopts "i:m:t:f:p:e:s:" opt "$@"; do
     case $opt in
       e)
         echo "Entries: $OPTARG"
@@ -178,6 +179,9 @@ start_with_args() {
           exit 1
         }
         ;;
+      ?)
+        exit 1
+        ;;
       esac
   done
 
@@ -195,15 +199,31 @@ start_with_args() {
     fi
   fi
 
-  if [ -z "$B2G_PID" ]
+  if [ -n "`echo $features | grep tasktracer`" ]
   then
-    echo "No B2G process specified. Exiting"
-    exit 1
-  else
-    echo "Starting profiling PID $B2G_PID.."
-    ${ADB} shell "kill -12 ${B2G_PID}"
+    tasktracer="true"
+    clear_pids
+    get_pids
+    echo "Enable feature TaskTracer requires profiling on all current running processes."
+    for pid in ${B2G_PIDS[*]}; do
+      echo "Starting profiling with TaskTracer on PID ${pid}"
+      ${ADB} shell "kill -12 ${pid}"
+    done
     echo "Profiler started"
-    echo
+  fi
+
+  if [ -z "$tasktracer" ]
+  then
+    if [ -z "$B2G_PID" ]
+    then
+      echo "No B2G process specified. Exiting"
+      exit 1
+    else
+      echo "Starting profiling PID $B2G_PID"
+      ${ADB} shell "kill -12 ${B2G_PID}"
+      echo "Profiler started"
+      echo
+    fi
   fi
 }
 
@@ -254,8 +274,25 @@ check_video_capture_requirements() {
 #
 HELP_capture="Signals, pulls, and symbolicates the profile data"
 cmd_capture() {
+  video=0
+
+  while getopts "s:v" opt "$@"; do
+    case $opt in
+      s)
+        echo "Symbols: $OPTARG"
+        BP_SYMBOLS="-s $OPTARG"
+        ;;
+      v)
+        video=1
+        ;;
+      ?)
+        exit 1
+        ;;
+    esac
+  done
+
   # Start recording with the camera
-  if [ "$1" == "-video" ]; then
+  if [ "$video" -ne 0 ]; then
     check_video_capture_requirements
     adb -s "$SPS_VIDEO_DEVICE" shell "am start -a android.media.action.VIDEO_CAPTURE"
     if [ $? != 0 ]; then
@@ -464,7 +501,7 @@ cmd_pull() {
     local_filename="profile_${label}_${pid}_${alphanum_process_name}.txt"
   fi
   profile_filename=$(${ADB} shell "echo -n ${profile_pattern}")
-  
+
   CMD_PULL_LOCAL_FILENAME=
   if [ "${profile_filename}" == "${profile_pattern}" ]; then
     echo "${PREFIX}Profile file for PID ${pid} ${B2G_COMMS[${pid}]} doesn't exist - process likely killed due to OOM"
@@ -605,10 +642,9 @@ HELP_start="Starts the profiler. -p [process] -e [entries] -s [stack scan mode]
               -i [interval] -m [profiler mode] -f [features] -t [threads].
               e.g. ./profile.sh start -p b2g -t Compositor -i 1"
 cmd_start() {
-  args=$@
-  if [ -n "$args" ]
+  if [ $# -gt 0 ]
   then
-    start_with_args $args
+    start_with_args "$@"
   else
     stop_b2g
     remove_profile_files
@@ -651,16 +687,18 @@ cmd_symbolicate() {
 
   # Get some variables from the build system
   local var_profile="./.var.profile"
-  if [ ! -f ${var_profile} ]; then
+  if [ -f ${var_profile} ]; then
+      source ${var_profile}
+  elif [ -z "$BP_SYMBOLS" ]; then
     echo "${PREFIX}Unable to locate ${var_profile}"
     echo "${PREFIX}You need to build b2g in order to get symbolic information"
     exit 1
   fi
-  source ${var_profile}
 
   local sym_filename="${profile_filename%.*}.sym"
   echo "${PREFIX}Adding symbols to ${profile_filename} and creating ${sym_filename} ..."
-  ./scripts/profile-symbolicate.py -o "${sym_filename}" "${profile_filename}" > /dev/null
+  ./scripts/profile-symbolicate.py \
+    $BP_SYMBOLS -o "${sym_filename}" "${profile_filename}" > /dev/null
   CMD_SYMBOLICATE_PROFILE="$sym_filename"
 }
 

@@ -116,19 +116,21 @@ def process_dmd_files_impl(dmd_files, args):
     get_objdir_and_product(args)
 
     for f in dmd_files:
-        # Extract the PID (e.g. 111) and UNIX time (e.g. 9999999) from the name
-        # of the dmd file (e.g. dmd-9999999-111.txt.gz).
+        # Extract the PID (e.g. 111) and UNIX time (e.g. 9999999) and the file
+        # kind ('txt' or 'json', depending on the version) from the name
+        # of the dmd file (e.g. dmd-9999999-111.json.gz).
         basename = os.path.basename(f)
-        dmd_filename_match = re.match(r'^dmd-(\d+)-(\d+).', basename)
+        dmd_filename_match = re.match(r'^dmd-(\d+)-(\d+).(txt|json)', basename)
         if dmd_filename_match:
             creation_time = datetime.fromtimestamp(int(dmd_filename_match.group(1)))
             pid = int(dmd_filename_match.group(2))
+            kind = dmd_filename_match.group(3)
             if pid in proc_names:
                 proc_name = proc_names[pid]
-                outfile_name = 'dmd-%s-%d.txt' % (proc_name, pid)
+                outfile_name = 'dmd-%s-%d.%s' % (proc_name, pid, kind)
             else:
                 proc_name = None
-                outfile_name = 'dmd-%d.txt' % pid
+                outfile_name = 'dmd-%d.%s' % (pid, kind)
         else:
             pid = None
             creation_time = None
@@ -139,28 +141,6 @@ def process_dmd_files_impl(dmd_files, args):
         outfile_path = os.path.join(out_dir, outfile_name)
         with GzipFile(outfile_path + '.gz', 'w') if args.compress_dmd_logs else \
                 open(outfile_path, 'w') as outfile:
-
-            def write(s):
-                print(s, file=outfile)
-
-            write('# Processed DMD output')
-            if creation_time:
-                write('# Created on %s, device time (may be unreliable).' %
-                      creation_time.strftime('%c'))
-            write('# Processed on %s, host machine time.' %
-                  datetime.now().strftime('%c'))
-            if proc_name:
-                write('# Corresponds to "%s" app, pid %d' % (proc_name, pid))
-            elif pid:
-                write('# Corresponds to unknown app, pid %d' % pid)
-            else:
-                write('# Corresponds to unknown app, unknown pid.')
-
-            write('#\n# Contents of b2g-procrank:\n#')
-            for line in procrank:
-                write('#    ' + line.strip())
-            write('\n')
-
             with GzipFile(f, 'r') as infile:
                 fix_b2g_stack.fix_b2g_stacks_in_file(infile, outfile, args)
 
@@ -243,7 +223,13 @@ def get_dumps(args):
                                if f.startswith('memory-report-') or
                                   f.startswith('unified-memory-report-')]
         dmd_files = [f for f in new_files if f.startswith('dmd-')]
-        merged_reports_path = merge_files(out_dir, memory_report_files)
+        if memory_report_files:
+            merged_reports_path = os.path.abspath(merge_files(out_dir, memory_report_files))
+        else:
+            # NB: It's possible this can happen if all child processes
+            #     die/restart during measurement.
+            merged_reports_path = None
+
         utils.pull_procrank_etc(out_dir)
 
         if not args.keep_individual_reports:
@@ -251,7 +237,7 @@ def get_dumps(args):
                 os.remove(os.path.join(out_dir, f))
 
         return (out_dir,
-                os.path.abspath(merged_reports_path),
+                merged_reports_path,
                 [os.path.join(out_dir, f) for f in dmd_files])
 
     return utils.run_and_delete_dir_on_exception(do_work, out_dir)
@@ -263,42 +249,46 @@ def get_and_show_info(args):
     if dmd_files and not args.no_dmd:
         print('Got %d DMD dump(s).' % len(dmd_files))
 
-    # Try to open the dump in Firefox.
-    about_memory_url = "about:memory?file=%s" % urllib.quote(merged_reports_path)
+    if merged_reports_path:
+        # Try to open the dump in Firefox.
+        about_memory_url = "about:memory?file=%s" % urllib.quote(merged_reports_path)
 
-    opened_in_firefox = False
-    if args.open_in_firefox:
-        try:
-            # Open about_memory_url in Firefox, but don't display stdout or stderr.
-            # This isn't necessary if Firefox is already running (which it
-            # probably is), because in that case our |firefox| invocation will
-            # open a new tab in the existing process and then immediately exit.
-            # But if Firefox isn't already running, we don't want to pollute
-            # our terminal with its output.
+        opened_in_firefox = False
+        if args.open_in_firefox:
+            try:
+                # Open about_memory_url in Firefox, but don't display stdout or stderr.
+                # This isn't necessary if Firefox is already running (which it
+                # probably is), because in that case our |firefox| invocation will
+                # open a new tab in the existing process and then immediately exit.
+                # But if Firefox isn't already running, we don't want to pollute
+                # our terminal with its output.
 
-            # If we wanted to be platform-independent, we might be able to use
-            # "NUL" on Windows.  But the rest of this script already isn't
-            # platform-independent, so whatever.
-            fnull = open('/dev/null', 'w')
-            subprocess.Popen(['firefox', about_memory_url], stdout=fnull, stderr=fnull)
-            opened_in_firefox = True
+                # If we wanted to be platform-independent, we might be able to use
+                # "NUL" on Windows.  But the rest of this script already isn't
+                # platform-independent, so whatever.
+                fnull = open('/dev/null', 'w')
+                subprocess.Popen(['firefox', about_memory_url], stdout=fnull, stderr=fnull)
+                opened_in_firefox = True
 
+                print()
+                print(textwrap.fill(textwrap.dedent('''\
+                    I just tried to open the memory report in Firefox.  If that
+                    didn't work for some reason, or if you want to open this report
+                    at a later time, open the following URL in a Firefox nightly build:
+                    ''')) + '\n\n  ' + about_memory_url)
+            except (subprocess.CalledProcessError, OSError):
+                pass
+
+        # If we didn't open in Firefox, output the message below.
+        if not opened_in_firefox:
             print()
             print(textwrap.fill(textwrap.dedent('''\
-                I just tried to open the memory report in Firefox.  If that
-                didn't work for some reason, or if you want to open this report
-                at a later time, open the following URL in a Firefox nightly build:
+                To view this report, open Firefox on this machine and load the
+                following URL:
                 ''')) + '\n\n  ' + about_memory_url)
-        except (subprocess.CalledProcessError, OSError):
-            pass
-
-    # If we didn't open in Firefox, output the message below.
-    if not opened_in_firefox:
-        print()
-        print(textwrap.fill(textwrap.dedent('''\
-            To view this report, open Firefox on this machine and load the
-            following URL:
-            ''')) + '\n\n  ' + about_memory_url)
+    else:
+        print('')
+        print("Failed to retrieve memory reports")
 
     # Get GC/CC logs if necessary.
     if args.get_gc_cc_logs:

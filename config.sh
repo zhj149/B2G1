@@ -96,13 +96,13 @@ case "$1" in
 	;;
 
 "nexus-5")
-  echo DEVICE=hammerhead >> .tmp-config &&
-  repo_sync nexus-5
-  ;;
+	echo DEVICE=hammerhead >> .tmp-config &&
+	repo_sync nexus-5
+	;;
 
-"optimus-l5")
-	echo DEVICE=m4 >> .tmp-config &&
-	repo_sync $1
+"nexus-5-l")
+	echo DEVICE=hammerhead >> .tmp-config &&
+	repo_sync nexus-5-l
 	;;
 
 "nexus-s")
@@ -115,21 +115,13 @@ case "$1" in
 	repo_sync $1
 	;;
 
-"otoro"|"unagi"|"keon"|"inari"|"leo"|"hamachi"|"peak"|"helix"|"wasabi"|"flatfish")
+"otoro"|"unagi"|"keon"|"inari"|"hamachi"|"peak"|"helix"|"wasabi"|"flatfish")
 	echo DEVICE=$1 >> .tmp-config &&
 	repo_sync $1
 	;;
 
-"flame"|"flame-kk")
+"flame"|"flame-kk"|"flame-l")
 	echo PRODUCT_NAME=flame >> .tmp-config &&
-	repo_sync $1
-	;;
-
-"fugu")
-	echo DEVICE=fugu >> .tmp-config &&
-	echo LUNCH=fugu-eng >> .tmp-config &&
-	echo TARGET_HVGA_ENABLE=true >> .tmp-config &&
-	echo GONK_VERSION=SP7710_13A_W13.39.7 >> .tmp-config &&
 	repo_sync $1
 	;;
 
@@ -139,15 +131,15 @@ case "$1" in
 	repo_sync $1
 	;;
 
-"tara")
-	echo DEVICE=sp8810ea >> .tmp-config &&
-	echo LUNCH=sp8810eabase-eng >> .tmp-config &&
-	repo_sync $1
-	;;
-
 "dolphin")
 	echo DEVICE=scx15_sp7715ga >> .tmp-config &&
 	echo PRODUCT_NAME=scx15_sp7715gaplus >> .tmp-config &&
+	repo_sync $1
+	;;
+
+"dolphin-512")
+	echo DEVICE=scx15_sp7715ea >> .tmp-config &&
+	echo PRODUCT_NAME=scx15_sp7715eaplus >> .tmp-config &&
 	repo_sync $1
 	;;
 
@@ -162,13 +154,13 @@ case "$1" in
 	repo_sync $1
 	;;  
 
-"emulator"|"emulator-jb"|"emulator-kk")
+"emulator"|"emulator-jb"|"emulator-kk"|"emulator-l")
 	echo DEVICE=generic >> .tmp-config &&
 	echo LUNCH=full-eng >> .tmp-config &&
 	repo_sync $1
 	;;
 
-"emulator-x86"|"emulator-x86-jb"|"emulator-x86-kk")
+"emulator-x86"|"emulator-x86-jb"|"emulator-x86-kk"|"emulator-x86-l")
 	echo DEVICE=generic_x86 >> .tmp-config &&
 	echo LUNCH=full_x86-eng >> .tmp-config &&
 	repo_sync $1
@@ -184,6 +176,26 @@ case "$1" in
 	repo_sync $1
 	;;
 
+"leo-kk"|"leo-l")
+	echo PRODUCT_NAME=leo >> .tmp-config &&
+	repo_sync $1
+	;;
+
+"aries"|"aries-l")
+	echo PRODUCT_NAME=aries >> .tmp-config &&
+	repo_sync $1
+	;;
+
+"scorpion-l")
+	echo PRODUCT_NAME=scorpion >> .tmp-config &&
+	repo_sync $1
+	;;
+
+"sirius-l")
+	echo PRODUCT_NAME=sirius >> .tmp-config &&
+	repo_sync $1
+	;;
+
 *)
 	echo "Usage: $0 [-cdflnq] (device name)"
 	echo "Flags are passed through to |./repo sync|."
@@ -194,6 +206,7 @@ case "$1" in
 	echo - nexus-4
 	echo - nexus-4-kk
 	echo - nexus-5
+	echo - nexus-5-l
 	echo - nexus-s
 	echo - nexus-s-4g
 	echo - flo "(Nexus 7 2013)"
@@ -202,26 +215,33 @@ case "$1" in
 	echo - inari
 	echo - keon
 	echo - peak
-	echo - leo
 	echo - hamachi
 	echo - helix
-	echo - wasabi
-	echo - fugu
 	echo - tarako
-	echo - tara
 	echo - dolphin
+	echo - dolphin-512
 	echo - pandaboard
 	echo - vixen
 	echo - flatfish
 	echo - flame
 	echo - flame-kk
+	echo - flame-l
 	echo - rpi "(Revision B)"
 	echo - emulator
 	echo - emulator-jb
 	echo - emulator-kk
+	echo - emulator-l
 	echo - emulator-x86
 	echo - emulator-x86-jb
 	echo - emulator-x86-kk
+	echo - emulator-x86-l
+	echo "> Sony Xperia devices"
+	echo - aries "(Z3 Compact KK)"
+	echo - aries-l "(Z3 Compact L)"
+	echo - leo-kk "(Z3 KK)"
+	echo - leo-l "(Z3 L)"
+	echo - scorpion-l "(Z3 Tablet Compact L)"
+	echo - sirius-l "(Z2 L)"
 	exit -1
 	;;
 esac

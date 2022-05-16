@@ -1,6 +1,7 @@
 #!/bin/bash
 
 . load-config.sh
+test -f $DEVICE_DIR/flash.sh && . $DEVICE_DIR/flash.sh
 
 ADB=${ADB:-adb}
 FASTBOOT=${FASTBOOT:-fastboot}
@@ -41,7 +42,8 @@ update_time()
 	fi
 	echo Attempting to set the time on the device
 	run_adb wait-for-device &&
-	run_adb shell toolbox date `date +%s` &&
+	run_adb shell "toolbox date $(date +%s) ||
+	               toolbox date -s $(date +%Y%m%d.%H%M%S)" &&
 	run_adb shell setprop persist.sys.timezone $TIMEZONE
 }
 
@@ -51,6 +53,11 @@ fastboot_flash_image()
 	PARTITION=$1
 	if [ "$DEVICE" == "flatfish" ] && [ "$PARTITION" == "userdata" ]; then
 		PARTITION="data"
+	fi
+	if [ "$PARTITION" == "recovery" ]; then
+		if [ "$DEVICE" == "aries" ] || [ "$DEVICE" == "leo" ] || [ "$DEVICE" == "scorpion" ] || [ "$DEVICE" == "sirius" ]; then
+			PARTITION="FOTAKernel"
+		fi
 	fi
 	imgpath="out/target/product/$DEVICE/$1.img"
 	out="$(run_fastboot flash "$PARTITION" "$imgpath" 2>&1)"
@@ -145,6 +152,9 @@ flash_fastboot()
 			if [ $? -ne 0 ]; then
 				return $?
 			fi
+		fi
+		if [ "$DEVICE" == "aries" ] || [ "$DEVICE" == "leo" ] || [ "$DEVICE" == "scorpion" ] || [ "$DEVICE" == "sirius" ]; then
+			fastboot_flash_image recovery
 		fi
 		fastboot_flash_image userdata &&
 		fastboot_flash_image_if_exists cache &&
@@ -255,7 +265,7 @@ delete_extra_gecko_files_on_device()
 
 delete_single_variant_persist()
 {
-	run_adb shell rm -r /persist/svoperapps > /dev/null
+	run_adb shell 'rm -rf /persist/svoperapps'
 }
 
 flash_gecko()
@@ -330,7 +340,20 @@ while [ $# -gt 0 ]; do
 done
 
 case "$PROJECT" in
+"shallow")
+	run_adb shell stop b2g &&
+	run_adb remount &&
+	flash_gecko &&
+	flash_gaia &&
+	update_time &&
+	echo Restarting B2G &&
+	run_adb shell start b2g
+	exit $?
+	;;
+
 "gecko")
+	resp=`run_adb root` || exit $?
+	[ "$resp" != "adbd is already running as root" ] && run_adb wait-for-device
 	run_adb shell stop b2g &&
 	run_adb remount &&
 	flash_gecko &&
@@ -351,7 +374,7 @@ case "$PROJECT" in
 esac
 
 case "$DEVICE" in
-"leo"|"hamachi"|"helix"|"fugu"|"sp6821a_gonk")
+"hamachi"|"helix"|"sp6821a_gonk")
 	if $FULLFLASH; then
 		flash_fastboot nounlock $PROJECT
 		exit $?
@@ -368,11 +391,11 @@ case "$DEVICE" in
 	exit $?
 	;;
 
-"flame"|"otoro"|"unagi"|"keon"|"peak"|"inari"|"sp8810ea"|"wasabi"|"flatfish"|"scx15_sp7715ga")
+"flame"|"otoro"|"unagi"|"keon"|"peak"|"inari"|"wasabi"|"flatfish"|"aries"|"leo"|"scorpion"|"sirius"|"scx15_sp7715"*)
 	flash_fastboot nounlock $PROJECT
 	;;
 
-"panda"|"maguro"|"m4"|"crespo"|"crespo4g"|"mako"|"hammerhead"|"flo")
+"panda"|"maguro"|"crespo"|"crespo4g"|"mako"|"hammerhead"|"flo")
 	flash_fastboot unlock $PROJECT
 	;;
 
